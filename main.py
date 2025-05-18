@@ -29,7 +29,9 @@ credentials = None  # Using Application Default Credentials
 def process_invoice():
     """
     Tests receiving bucket_name and file_name from a POST request
-    and logs them.
+    and returns a simplified default response.
+    """
+    # Original implementation
     """
     try:
         data = request.get_json()
@@ -60,3 +62,25 @@ def process_invoice():
     except Exception as e:
         app.logger.exception("Error processing /process-invoice request")
         return jsonify({"status": "error", "message": str(e)}), 500
+    """
+    
+    # New simplified implementation
+    try:
+        data = request.get_json()
+        bucket_name = data.get("bucket_name", "default-bucket")
+        file_name = data.get("file_name", "default-file")
+        
+        return jsonify({
+            "status": "success",
+            "message": "Request received successfully",
+            "received_data": {
+                "bucket_name": bucket_name,
+                "file_name": file_name
+            }
+        }), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+#endregion
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080, debug=True)
