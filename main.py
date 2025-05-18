@@ -1,6 +1,9 @@
 from flask import Flask, request, jsonify
 import io
 import json
+import base64
+import os
+
 
 # Google Cloud clients
 from google.cloud import storage, documentai_v1 as documentai
@@ -27,60 +30,42 @@ credentials = None  # Using Application Default Credentials
 
 @app.route("/process-invoice", methods=["POST"])
 def process_invoice():
-    """
-    Tests receiving bucket_name and file_name from a POST request
-    and returns a simplified default response.
-    """
-    # Original implementation
-    """
     try:
         data = request.get_json()
-        if not data:
-            app.logger.error("No JSON payload received.")
-            return jsonify({"status": "error", "message": "No JSON payload received."}), 400
-
         bucket_name = data.get("bucket_name")
         file_name = data.get("file_name")
+        file_data_b64 = data.get("file_data")  # Base64 encoded content
 
-        if not bucket_name or not file_name:
-            app.logger.error("Missing 'bucket_name' or 'file_name' in payload.")
+        if not all([bucket_name, file_name, file_data_b64]):
             return jsonify({
                 "status": "error",
-                "message": "Missing 'bucket_name' or 'file_name' in payload."
+                "message": "Missing 'bucket_name', 'file_name', or 'file_data'."
             }), 400
 
-        app.logger.info(f"Received bucket_name: {bucket_name}")
-        app.logger.info(f"Received file_name: {file_name}")
+        # Decode the base64 content
+        pdf_content = base64.b64decode(file_data_b64)
+
+        # ─── Send to Document AI ────────────────────────────
+        client = documentai.DocumentProcessorServiceClient()
+        processor_path = client.processor_path("592970298260", "eu", "f3503305350e4b03")
+
+        raw_document = documentai.RawDocument(content=pdf_content, mime_type="application/pdf")
+        request_ai = documentai.ProcessRequest(name=processor_path, raw_document=raw_document)
+        result = client.process_document(request=request_ai)
+        document_json = result.document.to_json()
 
         return jsonify({
             "status": "success",
-            "message": "Parameters received successfully.",
-            "received_bucket": bucket_name,
-            "received_file": file_name
-        }), 200
+            "document_result": document_json
+        })
 
     except Exception as e:
-        app.logger.exception("Error processing /process-invoice request")
-        return jsonify({"status": "error", "message": str(e)}), 500
-    """
-    
-    # New simplified implementation
-    try:
-        data = request.get_json()
-        bucket_name = data.get("bucket_name")
-        file_name = data.get("file_name")
-        
+        app.logger.exception("Processing failed")
         return jsonify({
-            "status": "success",
-            "message": "Request received successfully",
-            "received_data": {
-                "bucket_name": bucket_name,
-                "file_name": file_name
-            }
-        }), 200
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-#endregion
+            "status": "error",
+            "message": str(e)
+        }), 500
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080, debug=True)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
