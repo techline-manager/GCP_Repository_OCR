@@ -7,6 +7,9 @@ from google.cloud import storage, documentai_v1 as documentai
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
+from ocr_processor import get_gcs_file as get_gcs_file_func
+
+
 app = Flask(__name__)
 
 #region CONFIGURATION
@@ -21,6 +24,13 @@ credentials = None  # Using Application Default Credentials
 #endregion
 
 @app.route("/process-invoice", methods=["POST"])
+def process_invoice():
+    app.logger.info("Received request to process invoice.")
+    get_gcs_file_func()
+    # Call the function from ocr_processor.py
+
+    
+""" @app.route("/process-invoice", methods=["POST"])
 def process_invoice():
     bucket_name = None
     file_name = None
@@ -165,3 +175,4 @@ def process_invoice():
         "status": "success",
         "message": f"Processed {file_name} and saved JSON to GCS bucket {bucket_name} as {processed_file_name}."
     }), 200
+ """
