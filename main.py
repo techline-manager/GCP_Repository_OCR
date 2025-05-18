@@ -1,12 +1,14 @@
 from flask import Flask, request, jsonify
-from google.cloud import documentai_v1 as documentai
+from google.cloud import storage, documentai_v1 as documentai
+import io
+import json
 
 app = Flask(__name__)
 
-# ─── YOUR CONFIG ───────────────────────────────────────────
+# ─── CONFIGURATION ────────────────────────────────────────────────
 PROJECT_ID = "neon-net-459709-s0"
-LOCATION = "eu"
-PROCESSOR_ID = "f3503305350e4b03"  # Your actual processor ID
+LOCATION = "us"  # Updated based on the error you had earlier.
+PROCESSOR_ID = "f3503305350e4b03"
 
 @app.route("/process-invoice", methods=["POST"])
 def process_invoice():
@@ -18,34 +20,38 @@ def process_invoice():
         if not all([bucket_name, file_name]):
             return jsonify({
                 "status": "error",
-                "message": "Missing 'bucket_name' or 'file_name' in request."
+                "message": "Missing 'bucket_name' or 'file_name'."
             }), 400
 
-        # ─── Build GCS URI ─────────────────────────────────────
-        gcs_uri = f"gs://{bucket_name}/{file_name}"
+        # ─── Download the file from Google Cloud Storage ───────────────
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(bucket_name)
+        blob = bucket.blob(file_name)
 
-        # ─── Initialize Document AI Client ─────────────────────
+        if not blob.exists():
+            return jsonify({
+                "status": "error",
+                "message": f"File '{file_name}' not found in bucket '{bucket_name}'."
+            }), 404
+
+        pdf_content = blob.download_as_bytes()
+
+        # ─── Send to Document AI ──────────────────────────────────────
         client = documentai.DocumentProcessorServiceClient()
         processor_path = client.processor_path(PROJECT_ID, LOCATION, PROCESSOR_ID)
 
-        # ─── Prepare GCS Document Input ────────────────────────
-        gcs_document = documentai.GcsDocument(
-            gcs_uri=gcs_uri,
+        raw_document = documentai.RawDocument(
+            content=pdf_content,
             mime_type="application/pdf"
         )
 
-        document_input_config = documentai.DocumentInputConfig(
-            gcs_document=gcs_document
-        )
-
-        # ─── Send Request to Document AI ───────────────────────
         request_ai = documentai.ProcessRequest(
             name=processor_path,
-            document_input_config=document_input_config
+            raw_document=raw_document
         )
 
         result = client.process_document(request=request_ai)
-        document_json = result.document.to_json()
+        document_json = json.loads(result.document.to_json())
 
         return jsonify({
             "status": "success",
@@ -53,8 +59,11 @@ def process_invoice():
         })
 
     except Exception as e:
-        app.logger.exception("Error processing invoice")
+        app.logger.exception("Processing failed")
         return jsonify({
             "status": "error",
             "message": str(e)
         }), 500
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080)
