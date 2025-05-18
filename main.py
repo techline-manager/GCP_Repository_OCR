@@ -99,7 +99,25 @@ def process_invoice():
         # --- Debugging and robust handling for document conversion ---
         if result and result.document:
             app.logger.info(f"Type of result.document: {type(result.document)}")
-            json_string_from_docai = result.document.to_json()
+            try:
+                json_string_from_docai = result.document.to_json()
+            except Exception as e_to_json:
+                app.logger.error(f"Error calling result.document.to_json(): {e_to_json}")
+                # Log some basic, hopefully safe-to-access, attributes of result.document
+                error_doc_details = "Unable to retrieve further document details during to_json() error."
+                try:
+                    # These attributes should generally exist on a valid Document object
+                    num_pages = len(result.document.pages) if result.document.pages else 0
+                    text_len = len(result.document.text) if result.document.text else 0
+                    num_entities = len(result.document.entities) if result.document.entities else 0
+                    error_doc_details = (
+                        f"result.document attributes at time of to_json() error: "
+                        f"Number of pages: {num_pages}, Length of text: {text_len}, Number of entities: {num_entities}."
+                    )
+                except Exception as e_details:
+                    error_doc_details = f"Could not retrieve basic attributes from result.document when to_json() failed: {e_details}"
+                app.logger.error(error_doc_details)
+                raise # Re-raise the original to_json error to ensure the main error handler catches it
             
             # Log a snippet of the JSON string to check its validity
             log_snippet = (json_string_from_docai[:500] + '...') if len(json_string_from_docai) > 500 else json_string_from_docai
