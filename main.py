@@ -31,19 +31,23 @@ credentials = None  # Using Application Default Credentials
 @app.route("/process-invoice", methods=["POST"])
 def process_invoice():
     try:
-        data = request.get_json()
+        # ─── Get the file data from the request ────────────────────────────
+        data = request.args  # If sent as query parameters or headers, adjust accordingly
         bucket_name = data.get("bucket_name")
         file_name = data.get("file_name")
-        file_data_b64 = data.get("file_data")  # Base64 encoded content
+        file_data_raw_binary = request.data
 
-        if not all([bucket_name, file_name, file_data_b64]):
+        if not all([bucket_name, file_name, file_data_raw_binary]):
             return jsonify({
                 "status": "error",
                 "message": "Missing 'bucket_name', 'file_name', or 'file_data'."
             }), 400
 
-        # Decode the base64 content
-        pdf_content = base64.b64decode(file_data_b64)
+        # If Document AI expects Base64, encode it
+        file_data_b64 = base64.b64encode(file_data_raw_binary).decode("utf-8")
+
+        # Otherwise, use raw binary directly
+        pdf_content = file_data_b64  
 
         # ─── Send to Document AI ────────────────────────────
         client = documentai.DocumentProcessorServiceClient()
