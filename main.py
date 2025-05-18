@@ -38,7 +38,8 @@ def process_invoice():
 
         # ─── Send to Document AI ──────────────────────────────────────
         client = documentai.DocumentProcessorServiceClient()
-        processor_path = client.processor_path(PROJECT_ID, LOCATION, PROCESSOR_ID)
+        processor_path = f"projects/592970298260/locations/eu/processors/f3503305350e4b03"
+
 
         raw_document = documentai.RawDocument(
             content=pdf_content,
