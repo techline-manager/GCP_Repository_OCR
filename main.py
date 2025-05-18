@@ -7,7 +7,7 @@ app = Flask(__name__)
 
 # ─── CONFIGURATION ────────────────────────────────────────────────
 PROJECT_ID = "neon-net-459709-s0"
-LOCATION = "eu"  # Updated based on the error you had earlier.
+LOCATION = "eu"  # Region where your processor is located.
 PROCESSOR_ID = "f3503305350e4b03"
 
 @app.route("/process-invoice", methods=["POST"])
@@ -37,9 +37,10 @@ def process_invoice():
         pdf_content = blob.download_as_bytes()
 
         # ─── Send to Document AI ──────────────────────────────────────
-        client = documentai.DocumentProcessorServiceClient()
-        processor_path = f"projects/592970298260/locations/eu/processors/f3503305350e4b03"
-
+        client = documentai.DocumentProcessorServiceClient(
+            client_options={"api_endpoint": "eu-documentai.googleapis.com"}
+        )
+        processor_path = f"projects/{PROJECT_ID}/locations/{LOCATION}/processors/{PROCESSOR_ID}"
 
         raw_document = documentai.RawDocument(
             content=pdf_content,
