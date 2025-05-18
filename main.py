@@ -32,7 +32,7 @@ credentials = None  # Using Application Default Credentials
 def process_invoice():
     try:
         # ─── Get the file data from the request ────────────────────────────
-        data = request.args  # If sent as query parameters or headers, adjust accordingly
+        data = request.get_json()  # Correct for JSON body data
         bucket_name = data.get("bucket_name")
         file_name = data.get("file_name")
         file_data_raw_binary = request.data
