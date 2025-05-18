@@ -92,18 +92,58 @@ def process_invoice():
 
         raw_document = documentai.RawDocument(content=pdf_content, mime_type="application/pdf")
         request_ai = documentai.ProcessRequest(name=processor_name, raw_document=raw_document)
+        
+        app.logger.info(f"Sending request to Document AI processor: {processor_name}")
         result = docai_client.process_document(request=request_ai)
-        document_json = json.loads(result.document.to_json())
+
+        # --- Debugging and robust handling for document conversion ---
+        if result and result.document:
+            app.logger.info(f"Type of result.document: {type(result.document)}")
+            json_string_from_docai = result.document.to_json()
+            
+            # Log a snippet of the JSON string to check its validity
+            log_snippet = (json_string_from_docai[:500] + '...') if len(json_string_from_docai) > 500 else json_string_from_docai
+            app.logger.info(f"Raw JSON string snippet from Document AI: {log_snippet}")
+
+            if not json_string_from_docai: # Check if the string is empty
+                app.logger.error("result.document.to_json() returned an empty string.")
+                raise ValueError("Document AI's to_json() method returned an empty string.")
+
+            document_json = json.loads(json_string_from_docai)
+        else:
+            app.logger.error(f"Document AI result is missing or result.document is None. Result object: {result}")
+            raise ValueError("Document AI processing returned no document or an empty document attribute.")
+        # --- End Debugging ---
+
         app.logger.info(f"Successfully processed '{file_name}' with Document AI.")
     except Exception as e:
         app.logger.exception("Document AI processing failed")
         return jsonify({
             "status": "error",
-            "stage": "gcs-upload",
+            "stage": "document-ai", # Corrected stage
+            "detail": str(e)
+        }), 500
+
+    try:
+        # ─── Upload result JSON to GCS ────────────────────
+        processed_file_name = f"{file_name.rsplit('.', 1)[0]}_OCRed.json" # e.g., mydoc_OCRed.json
+        if not gcs_bucket: # Should have been initialized during download
+             raise Exception("GCS bucket object not initialized. This should not happen if PDF download succeeded.")
+        result_blob = gcs_bucket.blob(processed_file_name)
+        result_blob.upload_from_string(
+            data=json.dumps(document_json, indent=2), # Save with indentation for readability
+            content_type="application/json"
+        )
+        app.logger.info(f"Successfully uploaded OCR results for '{file_name}' to GCS bucket '{bucket_name}' as '{processed_file_name}'.")
+    except Exception as e:
+        app.logger.exception(f"GCS upload of OCR JSON failed for '{processed_file_name}'")
+        return jsonify({
+            "status": "error",
+            "stage": "gcs-upload-json",
             "detail": str(e)
         }), 500
 
     return jsonify({
         "status": "success",
-        "message": f"Processed {file_name} and saved JSON to Drive."
+        "message": f"Processed {file_name} and saved JSON to GCS bucket {bucket_name} as {processed_file_name}."
     }), 200
