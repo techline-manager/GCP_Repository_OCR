@@ -7,7 +7,7 @@ app = Flask(__name__)
 
 # ─── CONFIGURATION ────────────────────────────────────────────────
 PROJECT_ID = "neon-net-459709-s0"
-LOCATION = "us"  # Updated based on the error you had earlier.
+LOCATION = "eu"  # Updated based on the error you had earlier.
 PROCESSOR_ID = "f3503305350e4b03"
 
 @app.route("/process-invoice", methods=["POST"])
