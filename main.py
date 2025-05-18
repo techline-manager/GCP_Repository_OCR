@@ -67,8 +67,8 @@ def process_invoice():
     # New simplified implementation
     try:
         data = request.get_json()
-        bucket_name = data.get("bucket_name", "default-bucket")
-        file_name = data.get("file_name", "default-file")
+        bucket_name = data.get("bucket_name")
+        file_name = data.get("file_name")
         
         return jsonify({
             "status": "success",
