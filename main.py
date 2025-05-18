@@ -61,29 +61,21 @@ def process_invoice():
             "stage": "document-ai",
             "detail": str(e)
         }), 500
-
+    
     try:
-        # ─── Upload result JSON to Drive ────────────────────
-        drive_service = build("drive", "v3")
-        file_metadata = {
-            "name": f"{file_name}.json",
-            "parents": [GDRIVE_FOLDER_ID]
-        }
-        media = MediaIoBaseUpload(
-            io.BytesIO(json.dumps(document_json).encode()),
-            mimetype="application/json"
+        # ─── Upload result JSON to GCS ────────────────────
+        processed_file_name = f"{file_name}_OCRed.json"
+        result_blob = bucket.blob(processed_file_name)
+        result_blob.upload_from_string(
+            data=json.dumps(document_json),
+            content_type="application/json"
         )
-        drive_service.files().create(
-            body=file_metadata,
-            media_body=media,
-            fields="id"
-        ).execute()
 
     except Exception as e:
-        app.logger.exception("Google Drive upload failed")
+        app.logger.exception("GCS upload failed")
         return jsonify({
             "status": "error",
-            "stage": "drive-upload",
+            "stage": "gcs-upload",
             "detail": str(e)
         }), 500
 
