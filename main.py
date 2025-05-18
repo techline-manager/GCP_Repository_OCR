@@ -1,7 +1,7 @@
-import os
+from flask import Flask, request, jsonify
+
 import io
 import json
-from flask import Flask, request, jsonify
 
 # Google Cloud clients
 from google.cloud import storage, documentai_v1 as documentai
@@ -10,26 +10,8 @@ from googleapiclient.http import MediaIoBaseUpload
 
 app = Flask(__name__)
 
-@app.route("/process-invoice", methods=["POST"])
-def process_invoice():
-    data        = request.get_json(force=True)
-    bucket_name = data.get("bucket_name", "ai-test-bucket-ocr")
-    file_name   = data.get("file_name",   "Invoice.pdf")
-
-    try:
-        result = aitest.process_invoice_logic(bucket_name, file_name, GDRIVE_FOLDER_ID)
-        return jsonify(result), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-if __name__ == "__main__":
-    import os
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
-
 #region my code
-""" 
+
 # ─── YOUR CONFIG ───────────────────────────────────────────
 PROJECT_ID       = "neon-net-459709-s0"
 LOCATION         = "eu"
@@ -55,7 +37,7 @@ def process_invoice():
 
         # ─── Send to Document AI ────────────────────────────
         client         = documentai.DocumentProcessorServiceClient()
-        processor_path = f"projects/{PROJECT_ID}/locations/{LOCATION}/processors/{PROCESSOR_ID}"
+        processor_path = "https://eu-documentai.googleapis.com/v1/projects/592970298260/locations/eu/processors/f3503305350e4b03"
 
         raw_document = documentai.RawDocument(
             content  = pdf_content,
@@ -106,5 +88,5 @@ def process_invoice():
         "message": f"Processed {file_name} and saved JSON to Drive."
     })
 
- """
+
 #endregion
