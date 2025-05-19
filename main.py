@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 from google.cloud import storage, documentai_v1 as documentai
+from google.protobuf.json_format import MessageToDict
 import io
 import json
 
@@ -53,13 +54,22 @@ def process_invoice():
         )
 
         result = client.process_document(request=request_ai)
-        document_json = json.loads(result.document.to_json())
+
+          # ─── Convert Protobuf to Dictionary ─────────────────────────
+        document_dict = MessageToDict(result.document)
+        document_json = json.dumps(document_dict)
+
+ # ─── Upload JSON Result Back to GCS ─────────────────────────
+        output_file_name = f"{file_name.rsplit('.', 1)[0]}_ocr_completed.json"
+        output_blob = bucket.blob(output_file_name)
+        output_blob.upload_from_string(document_json, content_type="application/json")
+
 
         return jsonify({
             "status": "success",
-            "document_result": document_json
+            "message": f"Processed '{file_name}' and uploaded result as '{output_file_name}'."
         })
-
+    
     except Exception as e:
         app.logger.exception("Processing failed")
         return jsonify({
