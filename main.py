@@ -55,6 +55,12 @@ def process_invoice():
 
         result = client.process_document(request=request_ai)
 
+        app.logger.info("Document processing completed.")
+        app.logger.info(dir(result.document))  # See what attributes are available
+
+
+
+
           # ─── Convert Protobuf to Dictionary ─────────────────────────
         document_dict = MessageToDict(result.document)
         document_json = json.dumps(document_dict)
