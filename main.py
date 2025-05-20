@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from google.api_core.client_options import ClientOptions
 from google.cloud import storage, documentai_v1 as documentai
 from google.protobuf.json_format import MessageToDict
 import io
@@ -10,6 +11,19 @@ app = Flask(__name__)
 PROJECT_ID = "neon-net-459709-s0"
 LOCATION = "eu"  # Region where your processor is located.
 PROCESSOR_ID = "f3503305350e4b03"
+
+FILE_PATH = "gs://neon-net-459709-s0/ocr_test.pdf"  # Path to the PDF file in GCS
+MIME_TYPE = "application/pdf"  # MIME type of the file
+# ─── GOOGLE CLOUD STORAGE ────────────────────────────────────────
+
+
+docai_client = documentai.DocumentProcessorServiceClient(client_options=ClientOptions(api_endpoint=f"{LOCATION}-documentai.googleapis.com"))
+RESOURCE_NAME = docai_client.processor_path(PROJECT_ID, LOCATION, PROCESSOR_ID)
+
+# Read the file into memory
+with open(FILE_PATH, "rb") as image:
+    image_content = image.read()
+
 
 @app.route("/process-invoice", methods=["POST"])
 def process_invoice():
@@ -37,11 +51,6 @@ def process_invoice():
 
         pdf_content = blob.download_as_bytes()
 
-        # ─── Send to Document AI ──────────────────────────────────────
-        client = documentai.DocumentProcessorServiceClient(
-            client_options={"api_endpoint": "eu-documentai.googleapis.com"}
-        )
-        processor_path = f"projects/{PROJECT_ID}/locations/{LOCATION}/processors/{PROCESSOR_ID}"
 
         raw_document = documentai.RawDocument(
             content=pdf_content,
@@ -49,23 +58,21 @@ def process_invoice():
         )
 
         request_ai = documentai.ProcessRequest(
-            name=processor_path,
+            name=RESOURCE_NAME,
             raw_document=raw_document
         )
 
-        result = client.process_document(request=request_ai)
+        result = docai_client.process_document(request=request_ai)
 
         app.logger.info("Document processing completed.")
         app.logger.info(dir(result.document))  # See what attributes are available
 
 
-
-
-          # ─── Convert Protobuf to Dictionary ─────────────────────────
+        # ─── Save the result to a JSON file ─────────────────────────
         document_dict = MessageToDict(result.document)
         document_json = json.dumps(document_dict)
 
- # ─── Upload JSON Result Back to GCS ─────────────────────────
+        # ─── Upload JSON Result Back to GCS ─────────────────────────
         output_file_name = f"{file_name.rsplit('.', 1)[0]}_ocr_completed.json"
         output_blob = bucket.blob(output_file_name)
         output_blob.upload_from_string(document_json, content_type="application/json")
