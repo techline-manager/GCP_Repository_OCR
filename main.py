@@ -66,8 +66,9 @@ def process_gcs_document(bucket_name: str, file_name: str):
 
         # ─── Save the result to a JSON file ─────────────────────────
         try:
-            document_dict = MessageToDict(result.document)
-            # document_json = json.dumps(document_dict, indent=2) # Add indent for readability
+            # If MessageToDict(result.document) was causing the "DESCRIPTOR" error,
+            # and you only need the text for now, you can remove or comment out this line:
+            # document_dict = MessageToDict(result.document)
 
             # Extract only the text and save it in a simple dictionary
             text_only_dict = {"extracted_text": result.document.text}
@@ -111,7 +112,7 @@ def process_invoice():
 
         if not all([bucket_name, file_name]):
             return jsonify({
-                "status": "error",
+                "status": "ERROR - MISSING ",
                 "message": "Missing 'bucket_name' or 'file_name'."
             }), 400
 
@@ -123,7 +124,7 @@ def process_invoice():
             return jsonify(result), 200
         elif result.get("status") == "error" and "not found" in result.get("message", "").lower():
             return jsonify({
-                "status": "error",
+                "status": "ERROR - NOT FOUND",
                 "message": f"File '{file_name}' not found in bucket '{bucket_name}'."
             }), 404
         else:
