@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 from google.api_core.client_options import ClientOptions
 from google.cloud import storage, documentai_v1 as documentai
-from google.protobuf.json_format import MessageToDict
+from google.protobuf.json_format import MessageToDict # Keep MessageToDict
 import io
 import json
 
@@ -12,17 +12,80 @@ PROJECT_ID = "neon-net-459709-s0"
 LOCATION = "eu"  # Region where your processor is located.
 PROCESSOR_ID = "f3503305350e4b03"
 
-FILE_PATH = "gs://neon-net-459709-s0/ocr_test.pdf"  # Path to the PDF file in GCS
-MIME_TYPE = "application/pdf"  # MIME type of the file
-# ─── GOOGLE CLOUD STORAGE ────────────────────────────────────────
-
+# FILE_PATH is now used in __main__ block, not globally read
+# MIME_TYPE is defined where used
 
 docai_client = documentai.DocumentProcessorServiceClient(client_options=ClientOptions(api_endpoint=f"{LOCATION}-documentai.googleapis.com"))
 RESOURCE_NAME = docai_client.processor_path(PROJECT_ID, LOCATION, PROCESSOR_ID)
 
-# Read the file into memory
-with open(FILE_PATH, "rb") as image:
-    image_content = image.read()
+# Remove the global file read - it's not used in the Flask route and won't be used in the new function
+# with open(FILE_PATH, "rb") as image:
+#     image_content = image.read()
+
+def process_gcs_document(bucket_name: str, file_name: str):
+    """
+    Downloads a document from GCS, processes it with Document AI,
+    and uploads the result JSON back to GCS.
+    """
+    app.logger.info(f"Processing GCS file: gs://{bucket_name}/{file_name}")
+
+    try:
+        # ─── Download the file from Google Cloud Storage ───────────────
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(bucket_name)
+        blob = bucket.blob(file_name)
+
+        if not blob.exists():
+            raise FileNotFoundError(f"File '{file_name}' not found in bucket '{bucket_name}'.")
+
+        pdf_content = blob.download_as_bytes()
+        app.logger.info(f"Downloaded {file_name} ({len(pdf_content)} bytes)")
+
+        # ─── Process with Document AI ──────────────────────────────────
+        raw_document = documentai.RawDocument(
+            content=pdf_content,
+            mime_type="application/pdf" # Assuming PDF based on original code and variable names
+        )
+
+        request_ai = documentai.ProcessRequest(
+            name=RESOURCE_NAME,
+            raw_document=raw_document
+        )
+
+        app.logger.info("Sending document to Document AI...")
+        result = docai_client.process_document(request=request_ai)
+        app.logger.info("Document processing completed.")
+
+        # app.logger.info(dir(result.document)) # Keep for debugging if needed
+
+        # ─── Save the result to a JSON file ─────────────────────────
+        document_dict = MessageToDict(result.document)
+        document_json = json.dumps(document_dict, indent=2) # Add indent for readability
+
+        # ─── Upload JSON Result Back to GCS ─────────────────────────
+        output_file_name = f"{file_name.rsplit('.', 1)[0]}_ocr_completed.json"
+        output_blob = bucket.blob(output_file_name)
+        output_blob.upload_from_string(document_json, content_type="application/json")
+        app.logger.info(f"Uploaded result to gs://{bucket_name}/{output_file_name}")
+
+        return {
+            "status": "success",
+            "message": f"Processed '{file_name}' and uploaded result as '{output_file_name}'.",
+            "output_gcs_uri": f"gs://{bucket_name}/{output_file_name}"
+        }
+
+    except FileNotFoundError as e:
+        app.logger.error(str(e))
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+    except Exception as e:
+        app.logger.exception("Processing failed")
+        return {
+            "status": "error",
+            "message": str(e)
+        }
 
 
 @app.route("/process-invoice", methods=["POST"])
@@ -38,57 +101,51 @@ def process_invoice():
                 "message": "Missing 'bucket_name' or 'file_name'."
             }), 400
 
-        # ─── Download the file from Google Cloud Storage ───────────────
-        storage_client = storage.Client()
-        bucket = storage_client.bucket(bucket_name)
-        blob = bucket.blob(file_name)
+        # Call the refactored processing function
+        result = process_gcs_document(bucket_name, file_name)
 
-        if not blob.exists():
+        # Map the result structure to Flask response
+        if result.get("status") == "success":
+            return jsonify(result), 200
+        elif result.get("status") == "error" and "not found" in result.get("message", "").lower():
             return jsonify({
                 "status": "error",
                 "message": f"File '{file_name}' not found in bucket '{bucket_name}'."
             }), 404
+        else:
+            return jsonify(result), 500
 
-        pdf_content = blob.download_as_bytes()
-
-
-        raw_document = documentai.RawDocument(
-            content=pdf_content,
-            mime_type="application/pdf"
-        )
-
-        request_ai = documentai.ProcessRequest(
-            name=RESOURCE_NAME,
-            raw_document=raw_document
-        )
-
-        result = docai_client.process_document(request=request_ai)
-
-        app.logger.info("Document processing completed.")
-        app.logger.info(dir(result.document))  # See what attributes are available
-
-
-        # ─── Save the result to a JSON file ─────────────────────────
-        document_dict = MessageToDict(result.document)
-        document_json = json.dumps(document_dict)
-
-        # ─── Upload JSON Result Back to GCS ─────────────────────────
-        output_file_name = f"{file_name.rsplit('.', 1)[0]}_ocr_completed.json"
-        output_blob = bucket.blob(output_file_name)
-        output_blob.upload_from_string(document_json, content_type="application/json")
-
-
-        return jsonify({
-            "status": "success",
-            "message": f"Processed '{file_name}' and uploaded result as '{output_file_name}'."
-        })
-    
     except Exception as e:
-        app.logger.exception("Processing failed")
+        # This catch is for errors *before* calling process_gcs_document (e.g., JSON parsing)
+        app.logger.exception("Flask route processing failed")
         return jsonify({
             "status": "error",
             "message": str(e)
         }), 500
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
+    # Define the GCS file path you want to process when running the script directly
+    # You can change this to any gs:// path you need for direct processing
+    FILE_PATH_FOR_DIRECT_RUN = "gs://neon-net-459709-s0/ocr_test.pdf"
+
+    # Instead of running the Flask app, call the processing function directly
+    if FILE_PATH_FOR_DIRECT_RUN.startswith("gs://"):
+        # Parse bucket and file name from the gs:// path
+        parts = FILE_PATH_FOR_DIRECT_RUN[5:].split('/', 1) # Split "gs://bucket/path/to/file" into ["bucket", "path/to/file"]
+        if len(parts) == 2:
+            main_bucket_name = parts[0]
+            main_file_name = parts[1]
+            print(f"Running direct processing for {FILE_PATH_FOR_DIRECT_RUN}")
+            processing_result = process_gcs_document(main_bucket_name, main_file_name)
+            print("\n--- Processing Result ---")
+            print(json.dumps(processing_result, indent=2))
+            print("-------------------------")
+        else:
+            print(f"Error: Invalid GCS path format in FILE_PATH_FOR_DIRECT_RUN: {FILE_PATH_FOR_DIRECT_RUN}")
+    else:
+        print(f"Error: FILE_PATH_FOR_DIRECT_RUN is not a GCS path: {FILE_PATH_FOR_DIRECT_RUN}")
+
+    # If you still want to run the Flask app alongside, you could add logic here
+    # like checking a command-line argument or environment variable.
+    # For this request, we've replaced the Flask run with the direct processing call.
+    # app.run(host="0.0.0.0", port=8080) # Commented out to run direct processing
