@@ -67,9 +67,13 @@ def process_gcs_document(bucket_name: str, file_name: str):
         # ─── Save the result to a JSON file ─────────────────────────
         try:
             document_dict = MessageToDict(result.document)
-            document_json = json.dumps(document_dict, indent=2) # Add indent for readability
+            # document_json = json.dumps(document_dict, indent=2) # Add indent for readability
+
+            # Extract only the text and save it in a simple dictionary
+            text_only_dict = {"extracted_text": result.document.text}
+            document_json = json.dumps(text_only_dict, indent=2)
         except Exception as e_serialize:
-            app.logger.error(f"Error during MessageToDict serialization: {e_serialize}")
+            app.logger.error(f"Error during JSON serialization of extracted text: {e_serialize}")
             raise  # Re-raise the exception to be caught by the main try-except block
 
         # ─── Upload JSON Result Back to GCS ─────────────────────────
