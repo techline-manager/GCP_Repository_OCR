@@ -56,11 +56,21 @@ def process_gcs_document(bucket_name: str, file_name: str):
         result = docai_client.process_document(request=request_ai)
         app.logger.info("Document processing completed.")
 
-        # app.logger.info(dir(result.document)) # Keep for debugging if needed
+        # --- Debugging: Inspect result.document ---
+        app.logger.info(f"Type of result.document: {type(result.document)}")
+        if hasattr(result.document, 'DESCRIPTOR') and result.document.DESCRIPTOR:
+            app.logger.info(f"result.document.DESCRIPTOR.full_name: {result.document.DESCRIPTOR.full_name}")
+        else:
+            app.logger.warning("result.document does not have a valid DESCRIPTOR attribute.")
+        # --- End Debugging ---
 
         # ─── Save the result to a JSON file ─────────────────────────
-        document_dict = MessageToDict(result.document)
-        document_json = json.dumps(document_dict, indent=2) # Add indent for readability
+        try:
+            document_dict = MessageToDict(result.document)
+            document_json = json.dumps(document_dict, indent=2) # Add indent for readability
+        except Exception as e_serialize:
+            app.logger.error(f"Error during MessageToDict serialization: {e_serialize}")
+            raise  # Re-raise the exception to be caught by the main try-except block
 
         # ─── Upload JSON Result Back to GCS ─────────────────────────
         output_file_name = f"{file_name.rsplit('.', 1)[0]}_ocr_completed.json"
