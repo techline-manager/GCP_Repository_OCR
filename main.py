@@ -12,6 +12,9 @@ PROJECT_ID = "neon-net-459709-s0"
 LOCATION = "eu"  # Region where your processor is located.
 PROCESSOR_ID = "f3503305350e4b03"
 
+# ─── GCS BUCKET AND FILE PATH ───────────────────────────────────
+TARGET_BUCKET = "ocr-processed-bucket"
+
 # FILE_PATH is now used in __main__ block, not globally read
 # MIME_TYPE is defined where used
 
@@ -79,9 +82,13 @@ def process_gcs_document(bucket_name: str, file_name: str):
 
         # ─── Upload JSON Result Back to GCS ─────────────────────────
         output_file_name = f"{file_name.rsplit('.', 1)[0]}_ocr_completed.json"
-        output_blob = bucket.blob(output_file_name)
+
+        # Get the target bucket
+        target_storage_client = storage.Client() # Can reuse the client or create a new one
+        target_gcs_bucket = target_storage_client.bucket(TARGET_BUCKET)
+        output_blob = target_gcs_bucket.blob(output_file_name)
         output_blob.upload_from_string(document_json, content_type="application/json")
-        app.logger.info(f"Uploaded result to gs://{bucket_name}/{output_file_name}")
+        app.logger.info(f"Uploaded result to gs://{TARGET_BUCKET}/{output_file_name}")
 
         return {
             "status": "success",
